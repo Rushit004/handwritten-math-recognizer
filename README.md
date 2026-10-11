@@ -188,7 +188,8 @@ handwritten-symbol-classifier/
 │   ├── 03_feature_engineering.ipynb         # Raw pixels vs HOG descriptors implementation
 │   ├── 04_baseline_models.ipynb             # Baseline Logistic Regression & initial benchmarks
 │   ├── 05_model_comparison.ipynb            # SVM, Random Forest, CNN & Hyperparameter tuning
-│   └── 06_final_evaluation.ipynb           # Test evaluation, confusion matrix & error analysis
+│   ├── 06_final_evaluation.ipynb           # Test evaluation, confusion matrix & error analysis
+│   └── 07_viva_defense_guide.ipynb          # Viva defense preparation and Q&A guide
 │
 ├── src/
 │   ├── __init__.py
@@ -196,7 +197,8 @@ handwritten-symbol-classifier/
 │   ├── feature_engineering.py               # HOG extractor & feature pipelines
 │   ├── train.py                             # Training scripts for classical models & PyTorch CNN
 │   ├── evaluate.py                          # Metric calculation, confusion matrix & error analysis
-│   └── predict.py                           # Inference pipeline with preprocessing & top-k ranking
+│   ├── predict.py                           # Inference pipeline with preprocessing & top-k ranking
+│   └── expression_recognizer.py             # Multi-stroke segmentation, assembly & Word MathML
 │
 ├── models/
 │   ├── baseline_logreg_raw.joblib           # Trained baseline Logistic Regression (Raw Pixels)
