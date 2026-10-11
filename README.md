@@ -142,29 +142,41 @@ pip install -r requirements.txt
 
 ## 🚀 Usage
 
-### Run Data Preprocessing
+### ⚡ Quick Start: Launch Web Application Directly
+All pre-trained models (`models/`) and processed datasets (`data/processed/`) are already bundled in this repository. You can launch the interactive app immediately without retraining:
+
+```bash
+streamlit run app.py
+```
+Open your browser at **`http://localhost:8501`**.
+
+---
+
+### 🔬 Optional: Retrain or Evaluate Models from Scratch
+
+#### 1. Run Data Preprocessing (Optional)
 Extracts curated classes, standardizes polarity, centers bounding boxes, and generates stratified splits:
 ```bash
 python -m src.data_preprocessing
 ```
 
-### Train All Models
+#### 2. Train All Models (Optional)
 Trains Baseline LogReg, SVM with GridSearchCV, Random Forest, and PyTorch CNN:
 ```bash
 python -m src.train
 ```
 
-### Evaluate on Test Set & Generate Error Analysis
+#### 3. Evaluate on Test Set & Generate Error Analysis (Optional)
 Evaluates untouched test data, produces confusion matrix, and misclassification gallery:
 ```bash
 python -m src.evaluate
 ```
 
-### Launch Streamlit Web Application
+#### 4. Explore Jupyter Notebooks
 ```bash
-streamlit run app.py
+jupyter notebook
 ```
-Open your browser at `http://localhost:8501`.
+Navigate to `notebooks/` to inspect any of the 7 academic analysis notebooks.
 
 ---
 
