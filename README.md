@@ -6,7 +6,7 @@
 ---
 
 ## 📌 Problem
-Digitizing handwritten mathematical expressions remains one of the most persistent bottlenecks in automated document processing and STEM education. While conventional Optical Character Recognition (OCR) systems such as Tesseract perform reliably on printed, linear typography, they break down when applied to handwritten mathematics. Mathematical handwriting contains multi-scale symbols, intricate curvature, non-standard orientations, disconnected strokes, and severe geometric overlap (e.g., distinguishing $+$ from $\times$, $\le$ from $<$, or $[$ from $\{$). 
+Digitizing handwritten mathematical expressions remains one of the most persistent bottlenecks in automated document processing and STEM education. While conventional Optical Character Recognition (OCR) systems such as Tesseract perform reliably on printed, linear typography, they break down when applied to handwritten mathematics. Mathematical handwriting contains multi-scale symbols, intricate curvature, non-standard orientations, disconnected strokes, and severe geometric overlap (e.g., distinguishing `$+$` from `$\times$`, `$\le$` from `$<$`, or `$[` from `$\{$`).
 
 This project solves the foundational task in mathematical OCR: **highly accurate, explainable, and real-time classification of isolated handwritten mathematical and special symbols**, bridging the gap between raw student sketches and machine-readable digital notation (LaTeX / MathML).
 
