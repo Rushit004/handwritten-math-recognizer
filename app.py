@@ -1,402 +1,282 @@
 """
-Streamlit Web Application: Handwritten Mathematical Expression Recognizer & MS Word Equation Suite
-Clean, Simple & Modern Interface for Direct Interactive Testing & Export to Microsoft Word
+Handwritten Math Symbol & Digit Recognizer
+Flask Web Application for Real-Time Canvas Inference
 """
 
 import os
 import io
-import re
+import base64
 import numpy as np
 from PIL import Image
-import streamlit as st
-from streamlit_drawable_canvas import st_canvas
+import torch
+import torch.nn as nn
+import cv2
+from flask import Flask, render_template, request, jsonify
 
-try:
-    import latex2mathml.converter
-except ImportError:
-    latex2mathml = None
+# ---------------------------------------------------------
+# Flask App Setup
+# ---------------------------------------------------------
+app = Flask(__name__)
 
-from src.predict import SymbolPredictor
-from src.expression_recognizer import segment_and_recognize_expression
+# ---------------------------------------------------------
+# Supported Classes (47 Math Symbols, Digits & Variables)
+# ---------------------------------------------------------
+CLASSES = {
+    0: {"name": "Capital Delta", "symbol": "Δ", "latex": r"\Delta", "category": "Greek"},
+    1: {"name": "Alpha", "symbol": "α", "latex": r"\alpha", "category": "Greek"},
+    2: {"name": "Beta", "symbol": "β", "latex": r"\beta", "category": "Greek"},
+    3: {"name": "Delta", "symbol": "δ", "latex": r"\delta", "category": "Greek"},
+    4: {"name": "Digit 0", "symbol": "0", "latex": "0", "category": "Digits"},
+    5: {"name": "Digit 1", "symbol": "1", "latex": "1", "category": "Digits"},
+    6: {"name": "Digit 2", "symbol": "2", "latex": "2", "category": "Digits"},
+    7: {"name": "Digit 3", "symbol": "3", "latex": "3", "category": "Digits"},
+    8: {"name": "Digit 4", "symbol": "4", "latex": "4", "category": "Digits"},
+    9: {"name": "Digit 5", "symbol": "5", "latex": "5", "category": "Digits"},
+    10: {"name": "Digit 6", "symbol": "6", "latex": "6", "category": "Digits"},
+    11: {"name": "Digit 7", "symbol": "7", "latex": "7", "category": "Digits"},
+    12: {"name": "Digit 8", "symbol": "8", "latex": "8", "category": "Digits"},
+    13: {"name": "Digit 9", "symbol": "9", "latex": "9", "category": "Digits"},
+    14: {"name": "Division", "symbol": "÷", "latex": r"\div", "category": "Arithmetic"},
+    15: {"name": "Equals", "symbol": "=", "latex": "=", "category": "Arithmetic"},
+    16: {"name": "Gamma", "symbol": "γ", "latex": r"\gamma", "category": "Greek"},
+    17: {"name": "Greater or Equal", "symbol": "≥", "latex": r"\geq", "category": "Relations"},
+    18: {"name": "Greater Than", "symbol": ">", "latex": ">", "category": "Relations"},
+    19: {"name": "Element Of", "symbol": "∈", "latex": r"\in", "category": "Set / Logic"},
+    20: {"name": "Infinity", "symbol": "∞", "latex": r"\infty", "category": "Calculus"},
+    21: {"name": "Integral", "symbol": "∫", "latex": r"\int", "category": "Calculus"},
+    22: {"name": "Lambda", "symbol": "λ", "latex": r"\lambda", "category": "Greek"},
+    23: {"name": "Left Bracket", "symbol": "[", "latex": "[", "category": "Delimiters"},
+    24: {"name": "Less or Equal", "symbol": "≤", "latex": r"\leq", "category": "Relations"},
+    25: {"name": "Less Than", "symbol": "<", "latex": "<", "category": "Relations"},
+    26: {"name": "Minus", "symbol": "-", "latex": "-", "category": "Arithmetic"},
+    27: {"name": "Not Equal", "symbol": "≠", "latex": r"\neq", "category": "Relations"},
+    28: {"name": "Partial Derivative", "symbol": "∂", "latex": r"\partial", "category": "Calculus"},
+    29: {"name": "Pi", "symbol": "π", "latex": r"\pi", "category": "Greek"},
+    30: {"name": "Plus", "symbol": "+", "latex": "+", "category": "Arithmetic"},
+    31: {"name": "Plus-Minus", "symbol": "±", "latex": r"\pm", "category": "Arithmetic"},
+    32: {"name": "Product", "symbol": "∏", "latex": r"\prod", "category": "Calculus"},
+    33: {"name": "Right Bracket", "symbol": "]", "latex": "]", "category": "Delimiters"},
+    34: {"name": "Right Arrow", "symbol": "→", "latex": r"\rightarrow", "category": "Set / Logic"},
+    35: {"name": "Sigma", "symbol": "σ", "latex": r"\sigma", "category": "Greek"},
+    36: {"name": "Square Root", "symbol": "√", "latex": r"\sqrt{}", "category": "Calculus"},
+    37: {"name": "Subset", "symbol": "⊂", "latex": r"\subset", "category": "Set / Logic"},
+    38: {"name": "Summation", "symbol": "∑", "latex": r"\sum", "category": "Calculus"},
+    39: {"name": "Theta", "symbol": "θ", "latex": r"\theta", "category": "Greek"},
+    40: {"name": "Multiplication", "symbol": "×", "latex": r"\times", "category": "Arithmetic"},
+    41: {"name": "Variable a", "symbol": "a", "latex": "a", "category": "Variables"},
+    42: {"name": "Variable b", "symbol": "b", "latex": "b", "category": "Variables"},
+    43: {"name": "Variable n", "symbol": "n", "latex": "n", "category": "Variables"},
+    44: {"name": "Variable x", "symbol": "x", "latex": "x", "category": "Variables"},
+    45: {"name": "Variable y", "symbol": "y", "latex": "y", "category": "Variables"},
+    46: {"name": "Variable z", "symbol": "z", "latex": "z", "category": "Variables"},
+}
 
-# -----------------------------------------------------------------------------
-# PAGE CONFIGURATION
-# -----------------------------------------------------------------------------
-st.set_page_config(
-    page_title="Handwritten Math Equation Recognizer",
-    page_icon="✏️",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-
-# -----------------------------------------------------------------------------
-# MODERN MINIMALIST CSS STYLING
-# -----------------------------------------------------------------------------
-st.markdown("""
-<style>
-    /* Clean typography & headings */
-    .main-title {
-        font-size: 2.2rem;
-        font-weight: 800;
-        color: #1E3A8A;
-        margin-bottom: 0.1rem;
-        letter-spacing: -0.5px;
-    }
-    .main-subtitle {
-        font-size: 1.05rem;
-        color: #475569;
-        margin-bottom: 1.2rem;
-        line-height: 1.5;
-    }
-    
-    /* Word Equation Box Styling */
-    .word-eq-box {
-        background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
-        border: 2px solid #2563EB;
-        border-radius: 12px;
-        padding: 24px 20px;
-        text-align: center;
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
-        margin: 15px 0 20px 0;
-    }
-    .word-badge {
-        display: inline-block;
-        background-color: #2B579A;
-        color: white;
-        font-size: 0.78rem;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-        padding: 3px 10px;
-        border-radius: 6px;
-        margin-bottom: 10px;
-        text-transform: uppercase;
-    }
-    
-    /* Ribbon Button Styling */
-    div[data-testid="stHorizontalBlock"] button {
-        border-radius: 8px;
-        font-weight: 600;
-    }
-    
-    /* Instruction Callout */
-    .tip-box {
-        background-color: #EFF6FF;
-        border-left: 4px solid #2563EB;
-        padding: 12px 16px;
-        border-radius: 0 8px 8px 0;
-        margin-top: 8px;
-        font-size: 0.9rem;
-        color: #1E40AF;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-
-# -----------------------------------------------------------------------------
-# MODEL ENGINE CACHING
-# -----------------------------------------------------------------------------
-@st.cache_resource
-def load_predictor():
-    return SymbolPredictor()
-
-predictor = load_predictor()
-
-
-# -----------------------------------------------------------------------------
-# HELPER: LATEX TO WORD MATHML CONVERTER
-# -----------------------------------------------------------------------------
-def convert_to_word_mathml(latex_str):
-    if not latex_str or latex2mathml is None:
-        return ""
-    try:
-        # Normalize radical without args for valid MathML
-        norm_latex = latex_str.replace(r"\sqrt{}", r"\sqrt{\ }")
-        return latex2mathml.converter.convert(norm_latex)
-    except Exception:
-        return f'<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow><mtext>{latex_str}</mtext></mrow></math>'
-
-
-# -----------------------------------------------------------------------------
-# SESSION STATE INITIALIZATION
-# -----------------------------------------------------------------------------
-if "current_equation" not in st.session_state:
-    st.session_state["current_equation"] = ""
-if "expr_result" not in st.session_state:
-    st.session_state["expr_result"] = None
-if "eq_input_box" not in st.session_state:
-    st.session_state["eq_input_box"] = ""
-
-
-# -----------------------------------------------------------------------------
-# APPLICATION HEADER
-# -----------------------------------------------------------------------------
-st.markdown('<div class="main-title">✏️ Handwritten Math Equation Recognizer</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="main-subtitle">'
-    'Write any mathematical formula across the whiteboard below (digits 0–9, variables <i>x, y, z</i>, '
-    'operators +, −, ×, ÷, =, or calculus √, ∫, ∑). '
-    'Click <b>"✨ Recognize Drawing"</b> to automatically synthesize a digital formula and export it directly to <b>Microsoft Word</b>!'
-    '</div>',
-    unsafe_allow_html=True
-)
-
-# -----------------------------------------------------------------------------
-# NAVIGATION TABS (Simple & Clean: Draw vs Upload)
-# -----------------------------------------------------------------------------
-tab_canvas, tab_upload = st.tabs(["✍️ Draw Expression on Whiteboard", "📁 Upload Image or Test Gallery"])
-
-
-# =============================================================================
-# TAB 1: DRAW ON BIG WHITEBOARD CANVAS
-# =============================================================================
-with tab_canvas:
-    st.markdown("##### 1. Draw your mathematical formula from left to right:")
-    
-    col_pen, _ = st.columns([2, 5])
-    with col_pen:
-        stroke_width = st.slider("Pen Thickness", min_value=3, max_value=20, value=8, key="pen_slider")
-
-    # Big Interactive Whiteboard (980 x 280 px)
-    canvas_result = st_canvas(
-        fill_color="rgba(255, 255, 255, 0)",
-        stroke_width=stroke_width,
-        stroke_color="#000000",
-        background_color="#FFFFFF",
-        height=280,
-        width=980,
-        drawing_mode="freedraw",
-        return_image_data=True,
-        key="whiteboard_canvas"
-    )
-
-    # Action Row
-    btn_col, sample_col = st.columns([2, 4])
-    with btn_col:
-        recognize_btn = st.button("✨ Recognize Drawing", type="primary", use_container_width=True)
-
-    with sample_col:
-        st.caption("Or test instant pre-loaded equations:")
-        s_c1, s_c2, s_c3, s_c4, s_c5 = st.columns(5)
-        picked_sample = None
-        if s_c1.button("🔢 2x + 3 = 5"): picked_sample = "sample_eq_linear"
-        if s_c2.button("📐 \\sqrt{x} + 2"): picked_sample = "sqrt"
-        if s_c3.button("∫ \\int x"): picked_sample = "integral"
-        if s_c4.button("π \\alpha + \\beta = \\pi"): picked_sample = "pi"
-        if s_c5.button("∑ \\sum_{i=1}^n"): picked_sample = "sum"
-
-    # Processing trigger
-    image_to_process = None
-
-    if recognize_btn:
-        if canvas_result is not None and canvas_result.image_data is not None:
-            arr = canvas_result.image_data
-            # Check if user drew black strokes
-            is_drawn = np.any((arr[:, :, 3] > 10) & (arr[:, :, 0] < 200))
-            if is_drawn:
-                image_to_process = arr
-            else:
-                st.warning("⚠️ The whiteboard appears blank. Please write an expression before clicking Recognize.")
-
-    elif picked_sample == "sample_eq_linear":
-        # Synthesize preset 2x + 3 = 5
-        st.session_state["current_equation"] = "2x + 3 = 5"
-        st.session_state["eq_input_box"] = "2x + 3 = 5"
-        st.session_state["expr_result"] = {
-            "assembled_latex": "2x + 3 = 5",
-            "plain_text": "2x + 3 = 5",
-            "word_mathml": convert_to_word_mathml("2x + 3 = 5"),
-            "total_symbols": 6,
-            "symbol_details": [
-                {"order": 1, "class_name": "digit_2", "latex": "2", "confidence_percent": 98.4, "category": "digits"},
-                {"order": 2, "class_name": "var_x", "latex": "x", "confidence_percent": 96.1, "category": "variables"},
-                {"order": 3, "class_name": "plus", "latex": "+", "confidence_percent": 99.2, "category": "arithmetic"},
-                {"order": 4, "class_name": "digit_3", "latex": "3", "confidence_percent": 97.5, "category": "digits"},
-                {"order": 5, "class_name": "equals", "latex": "=", "confidence_percent": 99.8, "category": "arithmetic"},
-                {"order": 6, "class_name": "digit_5", "latex": "5", "confidence_percent": 98.9, "category": "digits"},
-            ],
-            "annotated_image": None
-        }
-
-    elif picked_sample:
-        sample_path = f"data/processed/sample_images/{picked_sample}/sample_0.png"
-        if os.path.exists(sample_path):
-            image_to_process = Image.open(sample_path)
-
-    # Run Automatic Recognition Pipeline
-    if image_to_process is not None:
-        with st.spinner("⚡ Segmenting strokes & recognizing mathematical symbols..."):
-            res = segment_and_recognize_expression(image_to_process, predictor, model_name="Lightweight 2D CNN")
-            st.session_state["expr_result"] = res
-            st.session_state["current_equation"] = res["assembled_latex"]
-            st.session_state["eq_input_box"] = res["assembled_latex"]
-
-
-# =============================================================================
-# TAB 2: UPLOAD IMAGE OR SAMPLE GALLERY
-# =============================================================================
-with tab_upload:
-    st.markdown("##### Upload an Image of Handwritten Mathematics:")
-    up_c1, up_c2 = st.columns([1, 1])
-
-    with up_c1:
-        upload_choice = st.radio("Select source:", ["Upload Local File", "Pick from 47 Character Samples"], horizontal=True)
-
-        uploaded_img = None
-        if upload_choice == "Upload Local File":
-            up_file = st.file_uploader("Upload Image (PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"], key="upload_file")
-            if up_file is not None:
-                uploaded_img = Image.open(up_file)
-        else:
-            sample_choices = [
-                "digit_0", "digit_1", "digit_2", "digit_3", "digit_4", "digit_5", "digit_6", "digit_7", "digit_8", "digit_9",
-                "var_x", "var_y", "var_z", "var_a", "var_b", "var_n",
-                "plus", "minus", "times", "div", "equals", "plus_minus", "less_equal", "greater_equal", "not_equal",
-                "sqrt", "integral", "sum", "product", "infinity", "partial",
-                "alpha", "beta", "gamma", "delta", "Delta_cap", "pi", "theta", "lambda", "sigma"
-            ]
-            chosen_cls = st.selectbox("Choose a symbol to recognize:", sample_choices, index=0)
-            sample_file = f"data/processed/sample_images/{chosen_cls}/sample_0.png"
-            if os.path.exists(sample_file):
-                uploaded_img = Image.open(sample_file)
-
-        if uploaded_img is not None:
-            st.image(uploaded_img, caption="Input Handwritten Image", width=180)
-            if st.button("✨ Recognize Uploaded Image", type="primary", use_container_width=True):
-                with st.spinner("Recognizing symbol..."):
-                    res = segment_and_recognize_expression(uploaded_img, predictor, model_name="Lightweight 2D CNN")
-                    st.session_state["expr_result"] = res
-                    st.session_state["current_equation"] = res["assembled_latex"]
-                    st.session_state["eq_input_box"] = res["assembled_latex"]
-
-    with up_c2:
-        st.info("💡 **Supported Vocabulary (47 Classes):**\n\n"
-                "- **Digits:** 0, 1, 2, 3, 4, 5, 6, 7, 8, 9\n"
-                "- **Algebraic Variables:** x, y, z, a, b, n\n"
-                "- **Operators & Relations:** +, −, ×, ÷, =, ±, <, >, ≤, ≥, ≠\n"
-                "- **Calculus & Advanced:** √, ∫, ∑, ∏, ∞, ∂\n"
-                "- **Greek Letters:** α, β, γ, δ, Δ, π, θ, λ, σ\n"
-                "- **Delimiters & Sets:** [, ], ∈, ⊂, →")
-
-
-# =============================================================================
-# MICROSOFT WORD EQUATION SUITE (Interactive Editor & 1-Click Word Export)
-# =============================================================================
-if st.session_state["current_equation"]:
-    st.markdown("---")
-    st.markdown("### 📄 Microsoft Word Equation Editor & Digital Output")
-    st.markdown(
-        "Edit your formula live, insert Word equation structures, or copy directly into **Microsoft Word**, PowerPoint, or OneNote."
-    )
-
-    # 1. Word-Style Rendered Equation Container
-    curr_eq = st.session_state["current_equation"]
-    st.markdown('<div class="word-eq-box"><div class="word-badge">Microsoft Word Equation Environment</div>', unsafe_allow_html=True)
-    try:
-        # Display formatted KaTeX math
-        st.latex(curr_eq)
-    except Exception:
-        st.code(curr_eq)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # 2. Live Formula Input Bar (Updates live when typed)
-    def on_equation_edit():
-        st.session_state["current_equation"] = st.session_state["eq_input_box"]
-
-    edit_col, clear_col = st.columns([5, 1])
-    with edit_col:
-        st.text_input(
-            "📝 Live Formula Editor (LaTeX / Word format):",
-            value=st.session_state["current_equation"],
-            key="eq_input_box",
-            on_change=on_equation_edit,
-            help="Type or edit your equation here. The rendered formula and Word exports will update immediately!"
+# ---------------------------------------------------------
+# PyTorch CNN Architecture
+# ---------------------------------------------------------
+class SymbolCNN(nn.Module):
+    """
+    Lightweight 2D Convolutional Neural Network for 32x32 handwritten symbols.
+    """
+    def __init__(self, num_classes=47):
+        super(SymbolCNN, self).__init__()
+        
+        # Convolutional Block 1 (Input: 1x32x32 -> Output: 32x16x16)
+        self.conv_block1 = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2)
         )
-    with clear_col:
-        st.write("")
-        st.write("")
-        if st.button("🗑️ Clear", use_container_width=True):
-            st.session_state["current_equation"] = ""
-            st.session_state["eq_input_box"] = ""
-            st.session_state["expr_result"] = None
-            st.rerun()
+        
+        # Convolutional Block 2 (Input: 32x16x16 -> Output: 64x8x8)
+        self.conv_block2 = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Dropout2d(0.25)
+        )
+        
+        # Fully Connected Classifier
+        self.classifier = nn.Sequential(
+            nn.Linear(64 * 8 * 8, 128),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.5),
+            nn.Linear(128, num_classes)
+        )
 
-    # 3. Microsoft Word Equation Ribbon (Quick Insert Templates)
-    st.markdown("##### 🧮 Microsoft Word Equation Template Ribbon:")
-    r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12 = st.columns(12)
+    def forward(self, x):
+        x = self.conv_block1(x)
+        x = self.conv_block2(x)
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x
 
-    def append_template(template_str):
-        if st.session_state["current_equation"]:
-            st.session_state["current_equation"] += f" {template_str}"
+# ---------------------------------------------------------
+# Load Pre-Trained Weights
+# ---------------------------------------------------------
+device = torch.device("cpu")
+model = SymbolCNN(num_classes=len(CLASSES))
+
+weights_path = os.path.join(os.path.dirname(__file__), "model.pth")
+if os.path.exists(weights_path):
+    model.load_state_dict(torch.load(weights_path, map_location=device))
+    model.eval()
+    print(f"[OK] Loaded pre-trained model weights from {weights_path}")
+else:
+    print(f"[WARNING] Model weights file not found at {weights_path}")
+
+# ---------------------------------------------------------
+# Image Preprocessing Helper
+# ---------------------------------------------------------
+def preprocess_image(pil_img, target_size=(32, 32)):
+    """
+    Preprocess user drawing to match the training format:
+    1. Convert to grayscale.
+    2. Invert colors so strokes are white on black background.
+    3. Find bounding box around the drawn strokes.
+    4. Resize proportionally and center inside 32x32 canvas.
+    5. Convert to normalized float32 tensor (1, 1, 32, 32).
+    """
+    # 1. Grayscale conversion
+    gray = np.array(pil_img.convert("L"))
+    
+    # 2. Check polarity (white background with black ink -> invert)
+    corners = [gray[0, 0], gray[0, -1], gray[-1, 0], gray[-1, -1]]
+    if np.mean(corners) > 127:
+        inverted = 255 - gray
+    else:
+        inverted = gray
+
+    # 3. Clean noise with Gaussian blur and binary threshold
+    blurred = cv2.GaussianBlur(inverted, (3, 3), 0)
+    _, thresh = cv2.threshold(blurred, 20, 255, cv2.THRESH_BINARY)
+
+    # 4. Find bounding box of the drawn symbol
+    coords = cv2.findNonZero(thresh)
+    if coords is None:
+        return None  # Canvas is blank
+
+    x, y, w, h = cv2.boundingRect(coords)
+    crop = thresh[y:y+h, x:x+w]
+
+    # 5. Fit inside 24x24 box to leave a comfortable border
+    max_dim = max(w, h)
+    scale = 22.0 / max_dim
+    new_w = max(1, int(round(w * scale)))
+    new_h = max(1, int(round(h * scale)))
+    
+    resized_crop = cv2.resize(crop, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+    # 6. Place centered on 32x32 black background
+    canvas = np.zeros(target_size, dtype=np.uint8)
+    offset_x = (target_size[1] - new_w) // 2
+    offset_y = (target_size[0] - new_h) // 2
+    canvas[offset_y:offset_y+new_h, offset_x:offset_x+new_w] = resized_crop
+
+    # 7. Normalize pixel values [0, 1] and reshape to (1, 1, 32, 32)
+    normalized = canvas.astype(np.float32) / 255.0
+    tensor = torch.from_numpy(normalized).unsqueeze(0).unsqueeze(0)
+    return tensor
+
+# ---------------------------------------------------------
+# Web Routes
+# ---------------------------------------------------------
+@app.route("/")
+def index():
+    """Render the main drawing interface."""
+    return render_template("index.html")
+
+@app.route("/classes", methods=["GET"])
+def get_classes():
+    """Return all supported classes grouped for the UI gallery."""
+    return jsonify(CLASSES)
+
+@app.route("/predict", methods=["POST"])
+def predict():
+    """
+    Handle symbol prediction request from drawing canvas (base64)
+    or uploaded file.
+    """
+    try:
+        pil_image = None
+
+        # Check for JSON base64 image data
+        if request.is_json:
+            data = request.get_json()
+            image_data = data.get("image", "")
+            if not image_data:
+                return jsonify({"success": False, "error": "No image data provided"}), 400
+            
+            # Remove base64 header if present
+            if "," in image_data:
+                image_data = image_data.split(",")[1]
+            
+            image_bytes = base64.b64decode(image_data)
+            pil_image = Image.open(io.BytesIO(image_bytes))
+
+        # Check for multipart form file upload
+        elif "file" in request.files:
+            file = request.files["file"]
+            if file.filename == "":
+                return jsonify({"success": False, "error": "Empty file uploaded"}), 400
+            pil_image = Image.open(file.stream)
+
         else:
-            st.session_state["current_equation"] = template_str
-        st.session_state["eq_input_box"] = st.session_state["current_equation"]
-        st.rerun()
+            return jsonify({"success": False, "error": "Invalid request payload"}), 400
 
-    if r1.button("➗ \\frac{a}{b}"): append_template(r"\frac{a}{b}")
-    if r2.button("📈 x^{2}"): append_template(r"^{2}")
-    if r3.button("📉 x_{i}"): append_template(r"_{i}")
-    if r4.button("√ \\sqrt{x}"): append_template(r"\sqrt{x}")
-    if r5.button("∫ \\int"): append_template(r"\int x \, dx")
-    if r6.button("∑ \\sum"): append_template(r"\sum_{i=1}^{n}")
-    if r7.button("( x )"): append_template("( x )")
-    if r8.button("[ x ]"): append_template("[ x ]")
-    if r9.button("± \\pm"): append_template(r"\pm")
-    if r10.button("= ="): append_template("=")
-    if r11.button("π \\pi"): append_template(r"\pi")
-    if r12.button("∞ \\infty"): append_template(r"\infty")
+        # Preprocess the drawing
+        tensor = preprocess_image(pil_image)
+        if tensor is None:
+            return jsonify({
+                "success": False,
+                "error": "The canvas appears blank. Please draw a math symbol or digit first!"
+            }), 400
 
-    # 4. Word Export & Copy Options (3 Formats)
-    st.markdown("##### 📋 Copy & Export for Microsoft Word:")
-    exp_c1, exp_c2, exp_c3 = st.columns([1, 1, 1])
+        # Run model inference
+        with torch.no_grad():
+            logits = model(tensor)
+            probabilities = torch.softmax(logits, dim=1).numpy()[0]
 
-    word_mathml = convert_to_word_mathml(st.session_state["current_equation"])
+        # Get top 3 predicted candidates
+        top_indices = np.argsort(probabilities)[::-1][:3]
+        top_idx = int(top_indices[0])
+        top_candidate = CLASSES[top_idx]
+        top_confidence = round(float(probabilities[top_idx] * 100), 2)
 
-    with exp_c1:
-        st.markdown("###### 1. For MS Word (LaTeX Mode)")
-        st.code(st.session_state["current_equation"], language="latex")
-        st.markdown("""
-        <div class="tip-box">
-        <b>How to use in MS Word:</b><br>
-        1. In Word, press <b>Alt + =</b> (opens Equation)<br>
-        2. Paste this LaTeX code<br>
-        3. Press <b>Enter</b> to convert to a 2D equation!
-        </div>
-        """, unsafe_allow_html=True)
+        # Build list of alternative candidates
+        top3_list = []
+        for rank, idx in enumerate(top_indices, 1):
+            c_info = CLASSES[int(idx)]
+            top3_list.append({
+                "rank": rank,
+                "name": c_info["name"],
+                "symbol": c_info["symbol"],
+                "latex": c_info["latex"],
+                "category": c_info["category"],
+                "confidence": round(float(probabilities[idx] * 100), 2)
+            })
 
-    with exp_c2:
-        st.markdown("###### 2. For MS Word (Native MathML XML)")
-        st.code(word_mathml if word_mathml else "<math>...</math>", language="xml")
-        st.markdown("""
-        <div class="tip-box">
-        <b>Direct Word / Office Paste:</b><br>
-        Copy this MathML XML and paste directly into Word, PowerPoint, or OneNote; Word natively renders it as an editable equation.
-        </div>
-        """, unsafe_allow_html=True)
+        return jsonify({
+            "success": True,
+            "prediction": {
+                "name": top_candidate["name"],
+                "symbol": top_candidate["symbol"],
+                "latex": top_candidate["latex"],
+                "category": top_candidate["category"],
+                "confidence": top_confidence
+            },
+            "top3": top3_list
+        })
 
-    with exp_c3:
-        plain_formula = re.sub(r"\\[a-zA-Z]+", "", st.session_state["current_equation"]).replace("{", "").replace("}", "")
-        st.markdown("###### 3. Plain Text Formula")
-        st.code(plain_formula, language="text")
-        st.markdown("""
-        <div class="tip-box">
-        <b>Universal Plain Text:</b><br>
-        Use for plain text documents, chat messages, or code comments.
-        </div>
-        """, unsafe_allow_html=True)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
-    # 5. Visual Symbol Segmentation Breakdown
-    res = st.session_state.get("expr_result", None)
-    if res and res.get("symbol_details"):
-        st.markdown("---")
-        st.markdown("##### 🔍 Recognized Symbol Segmentation Breakdown:")
-
-        if res.get("annotated_image") is not None:
-            st.image(res["annotated_image"], caption="Stroke Detection & Left-to-Right Ordering", use_container_width=True)
-
-        cols = st.columns(min(len(res["symbol_details"]), 6))
-        for i, sym in enumerate(res["symbol_details"]):
-            with cols[i % len(cols)]:
-                if "crop_image" in sym and sym["crop_image"] is not None:
-                    st.image(sym["crop_image"], caption=f"Symbol #{sym['order']}", width=65)
-                st.markdown(f"**`{sym['latex']}`**")
-                st.caption(f"{sym['class_name']} ({sym['confidence_percent']:.1f}%)")
+# ---------------------------------------------------------
+# Application Entry Point
+# ---------------------------------------------------------
+if __name__ == "__main__":
+    print("Starting Math Symbol Recognizer Web Server...")
+    print("Open http://127.0.0.1:5000 in your browser.")
+    app.run(host="127.0.0.1", port=5000, debug=True)

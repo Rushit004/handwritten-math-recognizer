@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Handwritten Math Symbol Recognizer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="container">
+    
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-badge">ML Academic Project</div>
+      <h1>✏️ Handwritten Math Symbol Recognizer</h1>
+      <p class="subtitle">
+        Draw any mathematical digit, variable, arithmetic sign, or Greek letter on the canvas below.
+        Our lightweight Convolutional Neural Network (CNN) will predict it in real-time.
+      </p>
+    </header>
+
+    <!-- Main Workspace: Canvas + Prediction Result -->
+    <main class="workspace">
+      
+      <!-- Left Panel: Drawing Canvas & Tools -->
+      <section class="card canvas-card">
+        <div class="card-header">
+          <h2>Draw Symbol</h2>
+          <span class="hint">Draw inside the box</span>
+        </div>
+
+        <div class="canvas-wrapper">
+          <canvas id="drawCanvas" width="280" height="280"></canvas>
+        </div>
+
+        <!-- Stroke Width Controls -->
+        <div class="stroke-controls">
+          <span class="control-label">Stroke:</span>
+          <button type="button" class="stroke-btn" data-size="10">Thin</button>
+          <button type="button" class="stroke-btn active" data-size="16">Medium</button>
+          <button type="button" class="stroke-btn" data-size="22">Thick</button>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="button-row">
+          <button id="clearBtn" class="btn btn-secondary" title="Press Esc or C">
+            🧹 Clear
+          </button>
+          <button id="predictBtn" class="btn btn-primary" title="Press Enter">
+            ✨ Predict Symbol
+          </button>
+        </div>
+
+        <div id="statusMessage" class="status-message"></div>
+      </section>
+
+      <!-- Right Panel: Recognition Output -->
+      <section class="card result-card">
+        <div class="card-header">
+          <h2>Prediction Result</h2>
+          <span id="categoryBadge" class="badge">Awaiting Input</span>
+        </div>
+
+        <!-- Primary Prediction Display -->
+        <div id="primaryResult" class="primary-result">
+          <div class="symbol-display" id="symbolDisplay">?</div>
+          <div class="symbol-name" id="symbolName">Draw a symbol to begin</div>
+          
+          <!-- Confidence Bar -->
+          <div class="confidence-container">
+            <div class="confidence-header">
+              <span>Confidence</span>
+              <strong id="confidenceText">0.0%</strong>
+            </div>
+            <div class="confidence-track">
+              <div class="confidence-fill" id="confidenceFill" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- LaTeX Output Box -->
+          <div class="latex-box">
+            <div class="latex-label">LaTeX Code:</div>
+            <div class="latex-content">
+              <code id="latexCode">-</code>
+              <button id="copyLatexBtn" class="btn-copy" title="Copy LaTeX code">📋 Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top Candidates -->
+        <div class="candidates-section">
+          <h3>Top Predictions</h3>
+          <ul id="candidatesList" class="candidates-list">
+            <li class="candidate-empty">Top 3 model candidates will appear here.</li>
+          </ul>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Reference Section: Supported Symbols -->
+    <section class="card reference-card">
+      <div class="card-header collapsible-header" id="referenceToggle">
+        <h2>📚 Supported Symbols (47 Total)</h2>
+        <span class="toggle-icon">▼</span>
+      </div>
+      <div id="referenceContent" class="reference-content">
+        <div class="symbol-group">
+          <strong>Digits:</strong>
+          <span>0, 1, 2, 3, 4, 5, 6, 7, 8, 9</span>
+        </div>
+        <div class="symbol-group">
+          <strong>Variables:</strong>
+          <span>a, b, n, x, y, z</span>
+        </div>
+        <div class="symbol-group">
+          <strong>Arithmetic & Relations:</strong>
+          <span>+, -, ×, ÷, ±, =, &lt;, &gt;, ≤, ≥, ≠</span>
+        </div>
+        <div class="symbol-group">
+          <strong>Calculus & Analysis:</strong>
+          <span>√, ∫, ∑, ∏, ∞, ∂</span>
+        </div>
+        <div class="symbol-group">
+          <strong>Greek Letters:</strong>
+          <span>α, β, γ, δ, Δ, π, θ, λ, σ</span>
+        </div>
+        <div class="symbol-group">
+          <strong>Set Theory & Delimiters:</strong>
+          <span>∈, ⊂, →, [, ]</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>Handwritten Mathematical Symbol Recognizer &bull; Machine Learning Innovative Assignment</p>
+    </footer>
+
+  </div>
+
+  <script src="{{ url_for('static', filename='canvas.js') }}"></script>
+</body>
+</html>
