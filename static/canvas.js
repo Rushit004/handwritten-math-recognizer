@@ -164,7 +164,17 @@ document.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify({ image: dataUrl }),
       });
 
-      const result = await response.json();
+      const rawText = await response.text();
+      let result;
+      try {
+        result = JSON.parse(rawText);
+      } catch (parseErr) {
+        throw new Error(
+          response.status === 502 || response.status === 504
+            ? "Server is warming up. Please click Predict again in a few seconds."
+            : "Server returned an unexpected response. Please try again."
+        );
+      }
 
       if (!response.ok || !result.success) {
         throw new Error(result.error || "Prediction request failed");

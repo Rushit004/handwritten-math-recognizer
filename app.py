@@ -114,8 +114,9 @@ class SymbolCNN(nn.Module):
         return x
 
 # ---------------------------------------------------------
-# Load Pre-Trained Weights
+# Load Pre-Trained Weights (CPU Optimized)
 # ---------------------------------------------------------
+torch.set_num_threads(1)  # Conserve memory and threads in cloud containers
 device = torch.device("cpu")
 model = SymbolCNN(num_classes=len(CLASSES))
 
