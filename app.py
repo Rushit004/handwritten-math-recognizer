@@ -277,6 +277,7 @@ def predict():
 # Application Entry Point
 # ---------------------------------------------------------
 if __name__ == "__main__":
-    print("Starting Math Symbol Recognizer Web Server...")
-    print("Open http://127.0.0.1:5000 in your browser.")
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    print(f"Starting Math Symbol Recognizer Web Server on port {port}...")
+    print(f"Open http://localhost:{port} in your browser.")
+    app.run(host="0.0.0.0", port=port, debug=False)
