@@ -19,7 +19,10 @@ import hashlib
 import numpy as np
 import pandas as pd
 from PIL import Image
-import cv2
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 from sklearn.model_selection import train_test_split
 
 
@@ -105,10 +108,16 @@ def preprocess_single_image(img_input, target_size=(32, 32), return_intermediate
         if img_input.ndim == 3:
             if img_input.shape[2] == 4:
                 alpha = img_input[:, :, 3] / 255.0
-                rgb = cv2.cvtColor(img_input[:, :, :3], cv2.COLOR_RGB2GRAY)
+                if cv2 is not None:
+                    rgb = cv2.cvtColor(img_input[:, :, :3], cv2.COLOR_RGB2GRAY)
+                else:
+                    rgb = np.dot(img_input[:, :, :3], [0.2989, 0.5870, 0.1140])
                 img_arr = (rgb * alpha + 255 * (1 - alpha)).astype(np.uint8)
             else:
-                img_arr = cv2.cvtColor(img_input, cv2.COLOR_RGB2GRAY)
+                if cv2 is not None:
+                    img_arr = cv2.cvtColor(img_input, cv2.COLOR_RGB2GRAY)
+                else:
+                    img_arr = np.dot(img_input[:, :, :3], [0.2989, 0.5870, 0.1140]).astype(np.uint8)
         else:
             img_arr = img_input.copy()
     else:
@@ -124,27 +133,51 @@ def preprocess_single_image(img_input, target_size=(32, 32), return_intermediate
     else:
         inverted = img_arr.copy()
 
-    smoothed = cv2.GaussianBlur(inverted, (3, 3), 0)
-    _, thresh = cv2.threshold(smoothed, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    coords = cv2.findNonZero(thresh)
+    if cv2 is not None:
+        smoothed = cv2.GaussianBlur(inverted, (3, 3), 0)
+        _, thresh = cv2.threshold(smoothed, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        coords = cv2.findNonZero(thresh)
 
-    if coords is not None:
-        x, y, bw, bh = cv2.boundingRect(coords)
-        cropped = thresh[y:y+bh, x:x+bw]
-        
-        inner_max = int(min(target_size) * 0.75)  # 24 px
-        scale = inner_max / max(bw, bh)
-        new_w = max(1, int(bw * scale))
-        new_h = max(1, int(bh * scale))
-        
-        resized_crop = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
-        
-        canvas = np.zeros(target_size, dtype=np.uint8)
-        start_x = (target_size[1] - new_w) // 2
-        start_y = (target_size[0] - new_h) // 2
-        canvas[start_y:start_y+new_h, start_x:start_x+new_w] = resized_crop
+        if coords is not None:
+            x, y, bw, bh = cv2.boundingRect(coords)
+            cropped = thresh[y:y+bh, x:x+bw]
+            
+            inner_max = int(min(target_size) * 0.75)  # 24 px
+            scale = inner_max / max(bw, bh)
+            new_w = max(1, int(bw * scale))
+            new_h = max(1, int(bh * scale))
+            
+            resized_crop = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            
+            canvas = np.zeros(target_size, dtype=np.uint8)
+            start_x = (target_size[1] - new_w) // 2
+            start_y = (target_size[0] - new_h) // 2
+            canvas[start_y:start_y+new_h, start_x:start_x+new_w] = resized_crop
+        else:
+            canvas = cv2.resize(smoothed, target_size, interpolation=cv2.INTER_AREA)
     else:
-        canvas = cv2.resize(smoothed, target_size, interpolation=cv2.INTER_AREA)
+        # Pure PIL / NumPy fallback when cv2 is not installed
+        thresh = np.where(inverted > 30, 255, 0).astype(np.uint8)
+        non_zeros = np.argwhere(thresh > 0)
+        if len(non_zeros) > 0:
+            ymin, xmin = non_zeros.min(axis=0)
+            ymax, xmax = non_zeros.max(axis=0)
+            bw = max(1, xmax - xmin + 1)
+            bh = max(1, ymax - ymin + 1)
+            cropped_pil = Image.fromarray(thresh[ymin:ymax+1, xmin:xmax+1])
+
+            inner_max = int(min(target_size) * 0.75)
+            scale = inner_max / max(bw, bh)
+            new_w = max(1, int(bw * scale))
+            new_h = max(1, int(bh * scale))
+            resized_crop = np.array(cropped_pil.resize((new_w, new_h), Image.Resampling.BILINEAR))
+
+            canvas = np.zeros(target_size, dtype=np.uint8)
+            start_x = (target_size[1] - new_w) // 2
+            start_y = (target_size[0] - new_h) // 2
+            canvas[start_y:start_y+new_h, start_x:start_x+new_w] = resized_crop
+        else:
+            canvas = np.array(Image.fromarray(inverted).resize(target_size, Image.Resampling.BILINEAR))
 
     normalized = canvas.astype(np.float32) / 255.0
 
